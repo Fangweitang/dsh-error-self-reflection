@@ -92,9 +92,9 @@ PowerShell `Set-Content` 默认带 BOM，会让 JSON/YAML 解析器报
 在技能根目录下执行（下文 `<name>` 替换成你的 profile 名）：
 
 ```bash
-node scripts/verify-profile.mjs --profile <name>
-node scripts/verify-profile.mjs --skills
-node scripts/verify-profile.mjs --all --strict
+node scripts/check.mjs --profile <name>
+node scripts/check.mjs --skills
+node scripts/check.mjs --all --strict
 ```
 
 退出码：`0` 无阻断问题，`1` 有 ERROR。`--strict` 让 WARN 也算失败。
@@ -123,9 +123,9 @@ node scripts/verify-profile.mjs --all --strict
 
 ---
 
-## 自动捕获与沉淀：变更账本（state.mjs）
+## 自动捕获与沉淀：变更账本（reflect.mjs）
 
-`verify-profile.mjs` 只看**当前状态**，看不出"我改了什么"。`state.mjs` 做的是**变更追踪 + 事故沉淀**，
+`check.mjs` 只看**当前状态**，看不出"我改了什么"。`reflect.mjs` 做的是**变更追踪 + 事故沉淀**，
 这是防止"下次再犯"的核心机制。
 
 ### 能力边界（必须先讲清楚）
@@ -145,15 +145,15 @@ node scripts/verify-profile.mjs --all --strict
 
 ```bash
 # 以下命令都在技能根目录执行
-node scripts/state.mjs snapshot --tag pre --note "要装某插件"
+node scripts/reflect.mjs snapshot --tag pre --note "要装某插件"
 
 # 2) 做改动（安装 / 改配置）
 
 # 3) 拍改动后
-node scripts/state.mjs snapshot --tag post --note "装完"
+node scripts/reflect.mjs snapshot --tag post --note "装完"
 
 # 4) 对比：声明这次"预期会动的 id"，其余动了就是越界
-node scripts/state.mjs diff --from pre --to post --scope "<本次要装的插件/条目 id>"
+node scripts/reflect.mjs diff --from pre --to post --scope "<本次要装的插件/条目 id>"
 ```
 
 `diff` 会输出字段级差异，并对**越界改动**报 ERROR：
@@ -173,17 +173,17 @@ node scripts/state.mjs diff --from pre --to post --scope "<本次要装的插件
 可按需覆盖：
 
 ```bash
-node scripts/state.mjs diff --from pre --global-ids "agent-default-model,custom-global"   # 追加
-node scripts/state.mjs diff --from pre --global-ids "" --reset-global-ids                  # 只用自己给的
+node scripts/reflect.mjs diff --from pre --global-ids "agent-default-model,custom-global"   # 追加
+node scripts/reflect.mjs diff --from pre --global-ids "" --reset-global-ids                  # 只用自己给的
 ```
 
 ### 事故沉淀
 
 ```powershell
-node scripts/state.mjs record                 # 跑 verify 并把问题归档到 incidents.jsonl
-node scripts/state.mjs incidents              # 看按类别聚合的复发次数（🔁复发 x2 / ✅已确认）
-node scripts/state.mjs confirm <fp> --note "原因"   # 确认真问题（判定需人做）
-node scripts/state.mjs promote                # 对"复发≥2 或已确认"的类别生成 lessons.md 草稿
+node scripts/reflect.mjs record                 # 跑 verify 并把问题归档到 incidents.jsonl
+node scripts/reflect.mjs incidents              # 看按类别聚合的复发次数（🔁复发 x2 / ✅已确认）
+node scripts/reflect.mjs confirm <fp> --note "原因"   # 确认真问题（判定需人做）
+node scripts/reflect.mjs promote                # 对"复发≥2 或已确认"的类别生成 lessons.md 草稿
 ```
 
 `promote` 输出的草稿里，**`真正原因` 和 `固化成的规则` 留空待补**——
@@ -201,9 +201,9 @@ data/incidents.jsonl          事故归档 + 确认标记
 三条命令看总览：
 
 ```powershell
-node scripts/state.mjs status
-node scripts/state.mjs journal
-node scripts/state.mjs incidents
+node scripts/reflect.mjs status
+node scripts/reflect.mjs journal
+node scripts/reflect.mjs incidents
 ```
 
 ### 关于快照 schema 版本
@@ -221,7 +221,7 @@ node scripts/state.mjs incidents
 2. 备份 cordis.patch.yml 与 package.json
 3. dsh plugin --profile <p> add <pkg>          # 让它自己写 bundles
 4. 只加配置（override-by-id，不写 insert）
-5. verify-profile.mjs                         # 结构校验
+5. check.mjs                         # 结构校验
 6. snapshot --tag post && diff --from pre --scope <预期id>   # 变更校验
 7. 重启 → 验证实际生效值（不要只验证文件内容）
 8. 出问题 → 备份回滚 → diff 确认回到基线 → record 归档
@@ -241,9 +241,9 @@ node examples/run.mjs      # 一键回归：好配置应全绿，坏配置应报
 单独跑某个：
 
 ```bash
-DSH_HOME=examples/good/.dsh        node scripts/verify-profile.mjs --profile demo
-DSH_HOME=examples/bad/.dsh         node scripts/verify-profile.mjs --profile broken
-DSH_HOME=examples/bad-insert/.dsh  node scripts/verify-profile.mjs --profile collide
+DSH_HOME=examples/good/.dsh        node scripts/check.mjs --profile demo
+DSH_HOME=examples/bad/.dsh         node scripts/check.mjs --profile broken
+DSH_HOME=examples/bad-insert/.dsh  node scripts/check.mjs --profile collide
 ```
 
 **不要用真实 profile 做试验。** 改动 `scripts/` 后跑 `node examples/run.mjs`，
@@ -261,15 +261,15 @@ DSH_HOME=examples/bad-insert/.dsh  node scripts/verify-profile.mjs --profile col
 - **规则**：<可执行的检查或步骤>
 ```
 
-新增可自动检查的项，就加到 `scripts/verify-profile.mjs`，并在上面的表格里补一行。
+新增可自动检查的项，就加到 `scripts/check.mjs`，并在上面的表格里补一行。
 **规则必须可执行，不写成感想。**
 
 每次修改后必须：
 
 ```bash
-node --check scripts/verify-profile.mjs
-node --check scripts/state.mjs
+node --check scripts/check.mjs
+node --check scripts/reflect.mjs
 node examples/run.mjs                            # 回归：好不误报、坏能抓到
-node scripts/verify-profile.mjs --all --skills   # 自检：这个 skill 自己也要通过
-node scripts/state.mjs status
+node scripts/check.mjs --all --skills   # 自检：这个 skill 自己也要通过
+node scripts/reflect.mjs status
 ```

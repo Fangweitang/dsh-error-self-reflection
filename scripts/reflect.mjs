@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dsh-install-verify :: state.mjs
+ * dsh-install-verify :: reflect.mjs
  * 变更账本 + 状态快照 + 事故自动归档 + 复发计数 + lessons 草稿生成。
  *
  * 子命令：
@@ -356,8 +356,8 @@ if (cmd === 'snapshot') {
   console.log(`快照已写入: ${file}`);
   console.log(`tag = ${tag}${note ? `  note = ${note}` : ''}`);
   console.log(`\n下一步：改完再拍一份，然后 diff`);
-  console.log(`  node "${path.join(HERE, 'state.mjs')}" snapshot --tag post --note "改完之后"`);
-  console.log(`  node "${path.join(HERE, 'state.mjs')}" diff --from ${tag}`);
+  console.log(`  node "${path.join(HERE, 'reflect.mjs')}" snapshot --tag post --note "改完之后"`);
+  console.log(`  node "${path.join(HERE, 'reflect.mjs')}" diff --from ${tag}`);
   process.exit(0);
 }
 
@@ -371,7 +371,7 @@ if (cmd === 'diff') {
   if (a.schema !== SCHEMA) {
     console.error(`快照 "${fromTag}" 的格式版本是 ${a.schema ?? '未知'}，当前需要 ${SCHEMA}。`);
     console.error(`旧快照缺少字段会导致 diff 产生假的"全部新增"噪音。请重新拍摄基线：`);
-    console.error(`  node state.mjs snapshot --tag <新tag> --note "重新基线"`);
+    console.error(`  node reflect.mjs snapshot --tag <新tag> --note "重新基线"`);
     process.exit(2);
   }
   const toTag = opt('--to');
@@ -493,7 +493,7 @@ if (cmd === 'journal') {
 
 if (cmd === 'record') {
   // 跑 verify，把 ERROR/WARN 归档
-  const vs = path.join(HERE, 'verify-profile.mjs');
+  const vs = path.join(HERE, 'check.mjs');
   const r = spawnSync(process.execPath, [vs, '--all', '--skills'], { encoding: 'utf8' });
   const out = (r.stdout || '') + (r.stderr || '');
   const found = out.split('\n').filter((l) => /^❌|^⚠️/.test(l.trim()));
@@ -507,7 +507,7 @@ if (cmd === 'record') {
     added++;
   }
   console.log(`已归档 ${added} 条问题到 ${INCIDENTS}`);
-  console.log(`查看复发: node "${path.join(HERE, 'state.mjs')}" incidents`);
+  console.log(`查看复发: node "${path.join(HERE, 'reflect.mjs')}" incidents`);
   process.exit(0);
 }
 
@@ -531,8 +531,8 @@ if (cmd === 'incidents') {
     console.log(`     first=${g.first} last=${g.last}${g.note ? `  note=${g.note}` : ''}`);
   }
   console.log(`\n共 ${rows.length} 类（阈值 ${min}）`);
-  console.log(`\n下一步：确认是真问题 → node "${path.join(HERE, 'state.mjs')}" confirm <fp> --note "原因"`);
-  console.log(`然后生成 lessons 草稿 → node "${path.join(HERE, 'state.mjs')}" promote`);
+  console.log(`\n下一步：确认是真问题 → node "${path.join(HERE, 'reflect.mjs')}" confirm <fp> --note "原因"`);
+  console.log(`然后生成 lessons 草稿 → node "${path.join(HERE, 'reflect.mjs')}" promote`);
   process.exit(0);
 }
 

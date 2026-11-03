@@ -16,8 +16,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));     // examples/
 const ROOT = path.join(HERE, '..');                            // repo root
-const VERIFY = path.join(ROOT, 'scripts', 'verify-profile.mjs');
-const STATE = path.join(ROOT, 'scripts', 'state.mjs');
+const VERIFY = path.join(ROOT, 'scripts', 'check.mjs');
+const STATE = path.join(ROOT, 'scripts', 'reflect.mjs');
 
 const cases = [
   {
@@ -83,7 +83,7 @@ for (const c of cases) {
   if (!ok) failures++;
 }
 
-// state.mjs：快照 → 改一个字段 → diff 必须报出该字段
+// reflect.mjs：快照 → 改一个字段 → diff 必须报出该字段
 console.log('\n── 变更检测 ──');
 const tmpHome = path.join(HERE, 'good', '.dsh');
 const patchPath = path.join(tmpHome, 'profiles', 'demo', 'cordis.patch.yml');

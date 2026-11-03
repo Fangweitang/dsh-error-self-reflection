@@ -7,20 +7,20 @@
 
 ```bash
 # 正确的写法：应全部通过
-DSH_HOME=examples/good/.dsh node scripts/verify-profile.mjs --profile demo
+DSH_HOME=examples/good/.dsh node scripts/check.mjs --profile demo
 
 # YAML 损坏（BOM + 粘贴残留 + 缺依赖）：应报多个 ERROR
-DSH_HOME=examples/bad/.dsh node scripts/verify-profile.mjs --profile broken
+DSH_HOME=examples/bad/.dsh node scripts/check.mjs --profile broken
 
 # YAML 合法，但手写 insert 与 bundle 自带 insert 撞 id：应报 1 个 ERROR
-DSH_HOME=examples/bad-insert/.dsh node scripts/verify-profile.mjs --profile collide
+DSH_HOME=examples/bad-insert/.dsh node scripts/check.mjs --profile collide
 ```
 
 PowerShell：
 
 ```powershell
 $env:DSH_HOME = "examples/good/.dsh"
-node scripts/verify-profile.mjs --profile demo
+node scripts/check.mjs --profile demo
 ```
 
 ## 预期结果

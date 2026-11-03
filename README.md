@@ -50,9 +50,9 @@ DSH 会扫描 `<project>/.dsh/skills`、`<project>/.agents/skills`、`~/.dsh/ski
 ### 1. 静态结构校验
 
 ```bash
-node scripts/verify-profile.mjs --profile <name>
-node scripts/verify-profile.mjs --all --skills
-node scripts/verify-profile.mjs --all --skills --strict   # WARN 也算失败（适合 CI）
+node scripts/check.mjs --profile <name>
+node scripts/check.mjs --all --skills
+node scripts/check.mjs --all --skills --strict   # WARN 也算失败（适合 CI）
 ```
 
 退出码：`0` 无阻断问题，`1` 有 ERROR。
@@ -60,7 +60,7 @@ node scripts/verify-profile.mjs --all --skills --strict   # WARN 也算失败（
 ### 2. 变更追踪（这招最能防"顺手改坏"）
 
 ```bash
-S=scripts/state.mjs
+S=scripts/reflect.mjs
 
 node $S snapshot --tag pre --note "要装某插件"
 # ... 做改动 ...
@@ -102,7 +102,7 @@ node $S promote                # 生成 lessons 草稿
 `promote` 生成的草稿里，根因字段会显式标注 `（待补——工具无法推断）`。
 这是刻意保留的诚实边界，不是未完成功能。
 
-**另一个边界**：`verify-profile.mjs` 只证明"配置结构正确"，**不证明运行时生效**。
+**另一个边界**：`check.mjs` 只证明"配置结构正确"，**不证明运行时生效**。
 重启后仍需检查运行时返回值（插件 HTTP 路由、日志、健康检查）。
 
 ---
@@ -115,8 +115,8 @@ dsh-install-verify/
 ├── references/
 │   └── lessons.md              # 15 条故障模式与规则（脱敏版）
 ├── scripts/
-│   ├── verify-profile.mjs      # 静态结构校验
-│   └── state.mjs               # 快照 / diff / 归档 / 复发 / 沉淀
+│   ├── check.mjs      # 静态结构校验
+│   └── reflect.mjs               # 快照 / diff / 归档 / 复发 / 沉淀
 ├── examples/
 │   ├── run.mjs                 # 一键回归测试
 │   ├── good/                   # 正确写法（应全绿）
@@ -166,10 +166,10 @@ node examples/run.mjs
 改完这个技能本身，跑：
 
 ```bash
-node --check scripts/verify-profile.mjs
-node --check scripts/state.mjs
-node scripts/verify-profile.mjs --all --skills   # 技能自己也要通过自己的检查
-node scripts/state.mjs status
+node --check scripts/check.mjs
+node --check scripts/reflect.mjs
+node scripts/check.mjs --all --skills   # 技能自己也要通过自己的检查
+node scripts/reflect.mjs status
 ```
 
 ---

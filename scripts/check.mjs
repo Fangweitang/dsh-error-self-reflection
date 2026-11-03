@@ -3,9 +3,9 @@
  * dsh-install-verify :: profile / skill 安装校验
  *
  * 用法：
- *   node verify-profile.mjs --profile <name>
- *   node verify-profile.mjs --skills
- *   node verify-profile.mjs --all --strict
+ *   node check.mjs --profile <name>
+ *   node check.mjs --skills
+ *   node check.mjs --all --strict
  *
  * 退出码：0 = 无 ERROR；1 = 有 ERROR（--strict 时 WARN 也算）
  */
@@ -403,7 +403,7 @@ if (runAllProfiles) {
 }
 
 if (profiles.length === 0 && !runSkills) {
-  console.error('用法: node verify-profile.mjs [--profile <name> | --all] [--skills] [--strict]');
+  console.error('用法: node check.mjs [--profile <name> | --all] [--skills] [--strict]');
   process.exit(2);
 }
 
