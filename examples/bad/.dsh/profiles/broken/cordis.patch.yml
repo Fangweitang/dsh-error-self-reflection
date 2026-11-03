@@ -1,0 +1,7 @@
+﻿# 错误写法：bundle 已经 insert 了 demo-plugin，这里又 insert 一次 -> 树里两个 insert。
+- insert:
+    - id: demo-plugin
+      name: 'demo-plugin'
+      config:
+        enabled: true
+</li>

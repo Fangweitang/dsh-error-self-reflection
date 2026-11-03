@@ -1,0 +1,11 @@
+# 正确写法：bundle 层负责 insert，profile 层只用 override-by-id 提供配置。
+- id: demo-plugin
+  name: 'demo-plugin'
+  config:
+    enabled: true
+    mode: auto
+- id: global-model
+  name: '@deepseek-ai/dsh-global-model'
+  config:
+    provider: primary
+    model: model-a

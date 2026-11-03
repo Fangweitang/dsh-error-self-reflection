@@ -1,0 +1,9 @@
+# 错误写法：bundle 已经 insert 了 demo-plugin，这里又 insert 一次。
+# 预期：ERROR 手写 insert 与 bundle 自带 insert 撞 id。
+- insert:
+    - id: demo-plugin
+      name: 'demo-plugin'
+- id: global-model
+  name: '@deepseek-ai/dsh-global-model'
+  config:
+    provider: primary

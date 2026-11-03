@@ -1,0 +1,16 @@
+{
+  "name": "broken-profile",
+  "private": true,
+  "dependencies": {
+    "demo-plugin": "^1.0.0",
+    "missing-plugin": "^2.0.0"
+  },
+  "dsh": {
+    "profile": {
+      "bundles": [
+        "@deepseek-ai/dsh-base",
+        "demo-plugin"
+      ]
+    }
+  }
+}

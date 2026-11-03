@@ -1,0 +1,20 @@
+# 运行时数据：包含本机路径与配置内容，不要进仓库
+data/
+
+# 真实依赖（防止误提交）
+node_modules/
+
+# 例外：examples 下的假 node_modules 是测试夹具，必须提交
+# 校验工具需要它们来检测 "手写 insert 撞 bundle insert id" 这类问题
+!examples/**/node_modules/
+!examples/**/node_modules/**/
+
+# 编辑器 / 系统
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Node
+npm-debug.log*
