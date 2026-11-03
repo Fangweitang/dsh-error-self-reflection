@@ -86,14 +86,22 @@ for (const c of cases) {
 // reflect.mjs：快照 → 改一个字段 → diff 必须报出该字段
 console.log('\n── 变更检测 ──');
 const tmpHome = path.join(HERE, 'good', '.dsh');
+
+// 数据目录必须显式隔离，否则会落到 $DSH_HOME/error-self-reflection，
+// 把示例夹具目录写脏（曾发生过一次：examples/good/.dsh/error-self-reflection）。
+// 用一个临时目录 + 结束后清理，保证回归可重复且不污染仓库。
+const tmpData = path.join(ROOT, 'data-rt');
+if (fs.existsSync(tmpData)) fs.rmSync(tmpData, { recursive: true, force: true });
+const rtEnv = { DSH_HOME: tmpHome, DSH_ERROR_SELF_REFLECTION_DATA: tmpData };
+
 const patchPath = path.join(tmpHome, 'profiles', 'demo', 'cordis.patch.yml');
 if (fs.existsSync(patchPath)) {
   const original = fs.readFileSync(patchPath);
   try {
-    run([REFLECT, 'snapshot', '--tag', 'rt-base', '--note', '回归基线'], { DSH_HOME: tmpHome });
+    run([REFLECT, 'snapshot', '--tag', 'rt-base', '--note', '回归基线'], rtEnv);
     const altered = original.toString('utf8').replace('provider: primary', 'provider: altered');
     fs.writeFileSync(patchPath, altered, 'utf8');
-    const d = run([REFLECT, 'diff', '--from', 'rt-base', '--global-ids', 'global-model'], { DSH_HOME: tmpHome });
+    const d = run([REFLECT, 'diff', '--from', 'rt-base', '--global-ids', 'global-model'], rtEnv);
     const sawField = /provider: "primary" -> "altered"/.test(d.out);
     const sawScope = /改动了全局配置行/.test(d.out);
     console.log(`${sawField ? '✅' : '❌'} 字段级差异被捕获（provider: primary -> altered）`);
@@ -104,17 +112,26 @@ if (fs.existsSync(patchPath)) {
     fs.writeFileSync(patchPath, original);
   }
   // 还原后再 diff，应回到"无变化"
-  const back = run([REFLECT, 'diff', '--from', 'rt-base'], { DSH_HOME: tmpHome });
+  const back = run([REFLECT, 'diff', '--from', 'rt-base'], rtEnv);
   const clean = /（无变化）/.test(back.out);
   console.log(`${clean ? '✅' : '❌'} 还原后 diff 显示无变化`);
   if (!clean) failures++;
 }
 
-// 清理回归期间产生的 data/
-const dataDir = path.join(ROOT, 'data');
-if (fs.existsSync(dataDir)) {
-  fs.rmSync(dataDir, { recursive: true, force: true });
-  console.log('\n（已清理回归测试产生的 data/）');
+// 清理回归产生的临时数据目录，以及可能残留的历史位置
+for (const dir of [tmpData, path.join(ROOT, 'data')]) {
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    console.log(`\n（已清理回归数据: ${path.relative(ROOT, dir).replace(/\\/g, '/')}）`);
+  }
+}
+// 示例夹具里若残留下数据目录（旧版本回归留下的），一并清掉
+for (const sub of ['good', 'bad', 'bad-insert']) {
+  const stray = path.join(HERE, sub, '.dsh', 'error-self-reflection');
+  if (fs.existsSync(stray)) {
+    fs.rmSync(stray, { recursive: true, force: true });
+    console.log(`（已清理示例夹具残留: ${path.relative(ROOT, stray).replace(/\\/g, '/')}）`);
+  }
 }
 
 console.log(`\n${failures === 0 ? '全部符合预期 ✅' : `${failures} 项不符合预期 ❌`}`);

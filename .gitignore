@@ -1,5 +1,7 @@
 # 运行时数据：包含本机路径与配置内容，不要进仓库
 data/
+data-rt/
+examples/**/.dsh/error-self-reflection/
 
 # 真实依赖（防止误提交）
 node_modules/

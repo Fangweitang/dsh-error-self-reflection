@@ -185,8 +185,29 @@ dsh-error-self-reflection/
 │   ├── good/                 # 正确写法（应全绿）
 │   ├── bad/                  # BOM + 残留 + 缺依赖（应报错）
 │   └── bad-insert/           # insert 撞 id（应报错）
-└── data/                     # 运行时生成（已被 .gitignore 忽略）
+└── data/                     # 仅旧版遗留；新版数据在 $DSH_HOME（见下）
 ```
+
+### 数据放在哪：跨项目共享
+
+历史数据**不跟着技能副本走**，而是落在 DSH 家目录，让同一台机器上的多个项目
+共用一份账本 —— 否则换个项目就丢一次复发统计，`incidents` 的意义就没了。
+
+| 优先级 | 位置 | 用途 |
+|---|---|---|
+| 1 | `$DSH_ERROR_SELF_REFLECTION_DATA` | 显式覆盖（测试、便携盘） |
+| 2 | `$DSH_HOME/error-self-reflection` | **默认**，整机共享 |
+| 3 | `<skill>/data` | 兼容旧版：有旧数据就沿用，不静默迁移 |
+
+```bash
+node scripts/reflect.mjs status          # 第一行就显示实际使用的目录与来源
+
+# 从旧版升级（技能内 data/ 有数据时）
+node scripts/reflect.mjs migrate-data        # 预览
+node scripts/reflect.mjs migrate-data --yes  # 执行（复制，不删旧数据）
+```
+
+迁移只**复制**，目标已存在同名文件时**跳过不覆盖**，避免覆盖共享位置里更新的数据。
 
 ---
 

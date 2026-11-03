@@ -203,13 +203,38 @@ node scripts/reflect.mjs promote                # 对"复发≥2 或已确认"�
 补完后再追加进 `references/lessons.md`。工具负责"提醒你这类错误又犯了"，
 你负责"想清楚为什么"。
 
-### 数据位置
+### 数据位置（跨项目共享）
+
+历史数据**不放在技能目录里**，而是放在 DSH 家目录下，这样同一台机器上
+多个项目、多份技能副本都共用一份账本，复发统计才有意义。
+
+解析顺序（先命中者生效）：
+
+| 优先级 | 位置 | 说明 |
+|---|---|---|
+| 1 | `$DSH_ERROR_SELF_REFLECTION_DATA` | 显式指定（测试、便携盘） |
+| 2 | `$DSH_HOME/error-self-reflection` | **默认落点**，整机共享 |
+| 3 | `<skill>/data` | 兼容旧版：已有旧数据时沿用，不静默迁移 |
+
+目录内容：
 
 ```
-data/snapshots/<tag>.json     快照（带 schema 版本，防旧快照失真）
-data/journal.jsonl            变更账本（每次 diff 追加一条）
-data/incidents.jsonl          事故归档 + 确认标记
+<数据目录>/snapshots/<tag>.json    快照（带 schema 版本，防旧快照失真）
+<数据目录>/journal.jsonl           变更账本（每次 diff 追加一条）
+<数据目录>/incidents.jsonl         事故归档 + 确认标记
 ```
+
+`status` 会显示**当前实际使用的目录与来源**，不确定用了哪份时先看它。
+
+从旧版升级（技能内 `data/` 已有数据）时，迁移到共享位置：
+
+```bash
+node scripts/reflect.mjs migrate-data          # 预览要迁移哪些文件
+node scripts/reflect.mjs migrate-data --yes    # 执行（复制，不删旧的）
+```
+
+迁移是**复制**而非移动，且目标已存在同名文件时**跳过不覆盖**——
+避免覆盖共享位置里更新的数据。确认无误后可自行删除旧的 `data/`。
 
 三条命令看总览：
 

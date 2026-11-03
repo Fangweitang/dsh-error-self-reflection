@@ -28,7 +28,52 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const HOME = os.homedir();
 const DSH_HOME = process.env.DSH_HOME || path.join(HOME, '.dsh');
 const AGENTS_HOME = process.env.DSH_AGENTS_HOME || path.join(HOME, '.agents');
-const DATA = path.join(HERE, '..', 'data');
+
+// ── 数据存放位置 ────────────────────────────────────────────────────────────
+//
+// 目标：同一台机器上跨项目、跨技能副本共享一份历史，而不是每装一份技能就丢一次账本。
+//
+// 解析顺序（先命中者生效）：
+//   1. $DSH_ERROR_SELF_REFLECTION_DATA   —— 显式指定，便于测试或在便携盘上使用
+//   2. $DSH_HOME/error-self-reflection   —— 默认落点（与 DSH 家目录同处，整机共享）
+//   3. <skill>/data                      —— 兼容旧版：若已存在旧数据则继续用它，不迁移
+//
+// 第 3 条是刻意的兼容策略：老用户的账本留在原地继续可读，不会被静默搬走或丢弃。
+// 迁移请显式执行 `reflect.mjs migrate-data`。
+const LEGACY_DATA = path.join(HERE, '..', 'data');
+
+function resolveDataDir() {
+  const override = process.env.DSH_ERROR_SELF_REFLECTION_DATA;
+  if (override) return { dir: path.resolve(override), source: 'DSH_ERROR_SELF_REFLECTION_DATA' };
+
+  const shared = path.join(DSH_HOME, 'error-self-reflection');
+  // 旧的技能内 data/ 若已有内容，优先沿用（避免老账本"消失"）
+  if (fs.existsSync(LEGACY_DATA) && hasAnyData(LEGACY_DATA) && !hasAnyData(shared)) {
+    return { dir: LEGACY_DATA, source: 'legacy-skill-data' };
+  }
+  return { dir: shared, source: 'dsh-home' };
+}
+
+function hasAnyData(dir) {
+  try {
+    if (!fs.existsSync(dir)) return false;
+    if (fs.existsSync(path.join(dir, 'journal.jsonl'))) {
+      const st = fs.statSync(path.join(dir, 'journal.jsonl'));
+      if (st.size > 0) return true;
+    }
+    if (fs.existsSync(path.join(dir, 'incidents.jsonl'))) {
+      const st = fs.statSync(path.join(dir, 'incidents.jsonl'));
+      if (st.size > 0) return true;
+    }
+    const snap = path.join(dir, 'snapshots');
+    if (fs.existsSync(snap) && fs.readdirSync(snap).some((f) => f.endsWith('.json'))) return true;
+  } catch { /* unreadable counts as no data */ }
+  return false;
+}
+
+const RESOLVED = resolveDataDir();
+const DATA = RESOLVED.dir;
+const DATA_SOURCE = RESOLVED.source;
 const SNAPDIR = path.join(DATA, 'snapshots');
 const JOURNAL = path.join(DATA, 'journal.jsonl');
 const INCIDENTS = path.join(DATA, 'incidents.jsonl');
@@ -594,6 +639,12 @@ if (cmd === 'status' || !cmd) {
   }
   const snaps = fs.existsSync(SNAPDIR) ? fs.readdirSync(SNAPDIR).filter((f) => f.endsWith('.json')).length : 0;
   console.log('\n================ dsh-error-self-reflection status ================\n');
+  console.log(`数据目录: ${DATA}`);
+  console.log(`来源:     ${DATA_SOURCE}`);
+  if (DATA_SOURCE === 'legacy-skill-data') {
+    console.log('          （仍在使用技能内的旧 data/；运行 migrate-data 可迁到共享位置）');
+  }
+  console.log('');
   console.log(`快照:     ${snaps} 份       ${SNAPDIR}`);
   console.log(`变更账本: ${j.length} 条       ${JOURNAL}`);
   console.log(`事故归档: ${inc.length} 条 / ${groups.size} 类   ${INCIDENTS}`);
@@ -611,6 +662,69 @@ if (cmd === 'status' || !cmd) {
   process.exit(0);
 }
 
+if (cmd === 'migrate-data') {
+  // 把技能内旧 data/ 迁到共享位置。默认只预览，--yes 才动文件。
+  const target = path.join(DSH_HOME, 'error-self-reflection');
+  console.log('\n================ 数据迁移 ================\n');
+  console.log(`从: ${LEGACY_DATA}`);
+  console.log(`到: ${target}`);
+
+  if (!fs.existsSync(LEGACY_DATA) || !hasAnyData(LEGACY_DATA)) {
+    console.log('\n旧 data/ 不存在或为空，无需迁移。');
+    console.log(`当前实际使用: ${DATA}（来源 ${DATA_SOURCE}）`);
+    process.exit(0);
+  }
+  if (target === LEGACY_DATA) {
+    console.log('\n源与目标相同，无需迁移。（若设置了 DSH_HOME，请确认它指向预期位置）');
+    process.exit(0);
+  }
+
+  const entries = [];
+  const addIf = (rel) => {
+    const src = path.join(LEGACY_DATA, rel);
+    if (fs.existsSync(src)) entries.push(rel);
+  };
+  addIf('journal.jsonl');
+  addIf('incidents.jsonl');
+  const snapSrc = path.join(LEGACY_DATA, 'snapshots');
+  if (fs.existsSync(snapSrc)) {
+    for (const f of fs.readdirSync(snapSrc)) {
+      if (f.endsWith('.json')) entries.push(path.join('snapshots', f));
+    }
+  }
+
+  console.log(`\n待迁移 ${entries.length} 个文件:`);
+  for (const rel of entries) console.log(`  ${rel}`);
+
+  if (!flag('--yes')) {
+    console.log('\n这是预览。确认后执行:');
+    console.log(`  node ${path.join(HERE, 'reflect.mjs')} migrate-data --yes`);
+    console.log('\n（迁移是复制，旧的 data/ 不会被删除；可自行清理）');
+    process.exit(0);
+  }
+
+  let copied = 0;
+  let skipped = 0;
+  for (const rel of entries) {
+    const src = path.join(LEGACY_DATA, rel);
+    const dst = path.join(target, rel);
+    if (fs.existsSync(dst)) {
+      // 不覆盖已有文件：共享位置可能已经有更新的同名文件
+      console.log(`  跳过（目标已存在）: ${rel}`);
+      skipped++;
+      continue;
+    }
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    console.log(`  复制: ${rel}`);
+    copied++;
+  }
+  console.log(`\n完成：复制 ${copied} 个，跳过 ${skipped} 个。`);
+  console.log(`下次运行将使用: ${target}`);
+  console.log('旧 data/ 保留在原处，确认迁移无误后可自行删除。');
+  process.exit(0);
+}
+
 console.error(`未知子命令: ${cmd}`);
-console.error('可用: snapshot | diff | journal | record | incidents | confirm | promote | status');
+console.error('可用: snapshot | diff | journal | record | incidents | confirm | promote | status | migrate-data');
 process.exit(2);
