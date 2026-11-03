@@ -1,12 +1,24 @@
 ---
-name: dsh-install-verify
-description: 在 DSH 里安装插件或 skill 后，用它做安装前后校验：解析 profile 的 cordis.patch.yml 与 package.json，检查 bundle 是否真的插入了对应的 loader 行、patch 行是否因 id 对不上而静默失效、依赖与 peer 是否可解析、YAML 是否带 BOM 或粘贴残留、已装 skill 的 frontmatter 是否合规。当你要安装/卸载 DSH 插件、修改 profile 配置、或声称某个安装"已完成/已验证"时使用；也适用于排查装了插件后对话异常、配置改了却不生效的情况。
+name: dsh-error-self-reflection
+description: 把一次配置事故变成下一次能自动拦住的检查。用于 DeepSeek Harness 的插件安装与 profile 配置变更：动手前拍快照、改完后做字段级 diff、识别越界改动（如误改全局默认模型）、把问题归档并按类别统计复发、生成复盘草稿。也用于排查"装了插件后对话异常"、"配置改了却不生效"。触发词：装插件、改 profile、配置漂移、越界改动、复盘、self-reflection、安装校验。
 ---
 
-# DSH 安装校验（dsh-install-verify）
+# 错误自省（dsh-error-self-reflection）
 
-这个 skill 记录的是**真实踩过的坑**，并把它们固化成可执行的检查。
-核心原则：**"我改了配置文件" ≠ "配置生效了"**。必须用程序读出 loader 的实际组合结果来证明。
+**把每一次配置事故，变成下一次自动拦截的检查。**
+
+起因很直接：装一个 DSH 插件时顺手改了不该改的全局默认模型，导致整个应用异常；
+而当时的"验证"只停在健康检查和文件内容，没覆盖最终生效值，所以问题一路穿过去没被发现。
+
+这个 skill 把那次事故连同后续踩到的坑固化成两类东西：
+
+- **可执行的检查**（`scripts/check.mjs` 静态结构校验、`scripts/reflect.mjs` 变更拦截与沉淀）
+- **可复用的规则**（`references/lessons.md` 15 条故障模式，每条对应一次真实事故）
+
+核心原则：**"我改了配置文件" ≠ "配置生效了"**；**"我发现问题" ≠ "我知道根因"**。
+前者要用程序读出 loader 的实际组合结果来证明；后者必须人来判断，工具只负责把证据摆到眼前。
+
+主线流程：**捕获 → 比对 → 拦截 → 归档 → 复发计数 → 沉淀。**
 
 ## 何时必须用
 
@@ -14,6 +26,7 @@ description: 在 DSH 里安装插件或 skill 后，用它做安装前后校验�
 - 修改 `~/.dsh/profiles/<name>/` 下的 `cordis.patch.yml` 或 `package.json`
 - 用户报告"装了插件后对话失败""配置改了但没生效"
 - 你准备说"已完成""已验证""兼容"之前
+- 想把某次出错沉淀下来，防止以后重犯时
 
 ## 铁律（每条都对应一个真实事故，见 `references/lessons.md`）
 
@@ -180,7 +193,7 @@ node scripts/reflect.mjs diff --from pre --global-ids "" --reset-global-ids     
 ### 事故沉淀
 
 ```powershell
-node scripts/reflect.mjs record                 # 跑 verify 并把问题归档到 incidents.jsonl
+node scripts/reflect.mjs record                 # 跑 check 并把问题归档到 incidents.jsonl
 node scripts/reflect.mjs incidents              # 看按类别聚合的复发次数（🔁复发 x2 / ✅已确认）
 node scripts/reflect.mjs confirm <fp> --note "原因"   # 确认真问题（判定需人做）
 node scripts/reflect.mjs promote                # 对"复发≥2 或已确认"的类别生成 lessons.md 草稿

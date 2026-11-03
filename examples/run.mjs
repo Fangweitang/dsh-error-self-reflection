@@ -16,8 +16,8 @@ import { fileURLToPath } from 'node:url';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));     // examples/
 const ROOT = path.join(HERE, '..');                            // repo root
-const VERIFY = path.join(ROOT, 'scripts', 'check.mjs');
-const STATE = path.join(ROOT, 'scripts', 'reflect.mjs');
+const CHECK = path.join(ROOT, 'scripts', 'check.mjs');
+const REFLECT = path.join(ROOT, 'scripts', 'reflect.mjs');
 
 const cases = [
   {
@@ -68,7 +68,7 @@ for (const c of cases) {
     failures++;
     continue;
   }
-  const { out } = run([VERIFY, '--profile', c.profile], { DSH_HOME: c.home });
+  const { out } = run([CHECK, '--profile', c.profile], { DSH_HOME: c.home });
   const counts = parseCounts(out);
   if (!counts) {
     console.log(`❌ ${c.name}: 输出里没有统计行，工具可能崩溃`);
@@ -90,10 +90,10 @@ const patchPath = path.join(tmpHome, 'profiles', 'demo', 'cordis.patch.yml');
 if (fs.existsSync(patchPath)) {
   const original = fs.readFileSync(patchPath);
   try {
-    run([STATE, 'snapshot', '--tag', 'rt-base', '--note', '回归基线'], { DSH_HOME: tmpHome });
+    run([REFLECT, 'snapshot', '--tag', 'rt-base', '--note', '回归基线'], { DSH_HOME: tmpHome });
     const altered = original.toString('utf8').replace('provider: primary', 'provider: altered');
     fs.writeFileSync(patchPath, altered, 'utf8');
-    const d = run([STATE, 'diff', '--from', 'rt-base', '--global-ids', 'global-model'], { DSH_HOME: tmpHome });
+    const d = run([REFLECT, 'diff', '--from', 'rt-base', '--global-ids', 'global-model'], { DSH_HOME: tmpHome });
     const sawField = /provider: "primary" -> "altered"/.test(d.out);
     const sawScope = /改动了全局配置行/.test(d.out);
     console.log(`${sawField ? '✅' : '❌'} 字段级差异被捕获（provider: primary -> altered）`);
@@ -104,7 +104,7 @@ if (fs.existsSync(patchPath)) {
     fs.writeFileSync(patchPath, original);
   }
   // 还原后再 diff，应回到"无变化"
-  const back = run([STATE, 'diff', '--from', 'rt-base'], { DSH_HOME: tmpHome });
+  const back = run([REFLECT, 'diff', '--from', 'rt-base'], { DSH_HOME: tmpHome });
   const clean = /（无变化）/.test(back.out);
   console.log(`${clean ? '✅' : '❌'} 还原后 diff 显示无变化`);
   if (!clean) failures++;

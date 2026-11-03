@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * dsh-install-verify :: reflect.mjs
+ * dsh-error-self-reflection :: reflect.mjs
  * 变更账本 + 状态快照 + 事故自动归档 + 复发计数 + lessons 草稿生成。
  *
  * 子命令：
  *   snapshot --tag <name> [--note "..."]        拍一份状态快照（baseline）
  *   diff --from <tag> [--to <tag>] [--scope ids]  对比快照，写出变更账本；越界改动报警
  *   journal [--limit N]                          查看变更账本
- *   record                                       运行 verify 并把问题写入 incidents.jsonl
+ *   record                                       运行 check 并把问题写入 incidents.jsonl
  *   incidents [--min N]                          查看事故复发计数
  *   confirm <fingerprint> [--note "..."]          人工确认某类事故是真问题
  *   promote [--min 2]                            对复发/已确认的模式生成 lessons.md 草稿
@@ -492,7 +492,7 @@ if (cmd === 'journal') {
 }
 
 if (cmd === 'record') {
-  // 跑 verify，把 ERROR/WARN 归档
+  // 跑 check，把 ERROR/WARN 归档
   const vs = path.join(HERE, 'check.mjs');
   const r = spawnSync(process.execPath, [vs, '--all', '--skills'], { encoding: 'utf8' });
   const out = (r.stdout || '') + (r.stderr || '');
@@ -593,7 +593,7 @@ if (cmd === 'status' || !cmd) {
     groups.set(it.fp, g);
   }
   const snaps = fs.existsSync(SNAPDIR) ? fs.readdirSync(SNAPDIR).filter((f) => f.endsWith('.json')).length : 0;
-  console.log('\n================ dsh-install-verify status ================\n');
+  console.log('\n================ dsh-error-self-reflection status ================\n');
   console.log(`快照:     ${snaps} 份       ${SNAPDIR}`);
   console.log(`变更账本: ${j.length} 条       ${JOURNAL}`);
   console.log(`事故归档: ${inc.length} 条 / ${groups.size} 类   ${INCIDENTS}`);
@@ -604,7 +604,7 @@ if (cmd === 'status' || !cmd) {
   console.log('  2) 改动');
   console.log('  3) snapshot --tag post');
   console.log('  4) diff --from pre --scope <预期会动的id>');
-  console.log('  5) record            （把 verify 的问题归档）');
+  console.log('  5) record            （把 check 发现的问题归档）');
   console.log('  6) incidents         （看复发）');
   console.log('  7) confirm / promote （沉淀成 lessons）');
   console.log('');

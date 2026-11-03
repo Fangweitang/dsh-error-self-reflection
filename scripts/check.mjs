@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * dsh-install-verify :: profile / skill 安装校验
+ * dsh-error-self-reflection :: profile / skill 安装校验
  *
  * 用法：
  *   node check.mjs --profile <name>
@@ -412,7 +412,7 @@ if (runSkills) verifySkills();
 
 // ---------- 输出 ----------
 const ICON = { ERROR: '❌', WARN: '⚠️ ', OK: '✅' };
-console.log('\n================ dsh-install-verify ================\n');
+console.log('\n================ dsh-error-self-reflection ================\n');
 let curArea = null;
 for (const r of RESULTS) {
   if (r.area !== curArea) { curArea = r.area; console.log(`\n── ${curArea} ──`); }
