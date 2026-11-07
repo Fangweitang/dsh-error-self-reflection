@@ -725,6 +725,246 @@ if (cmd === 'migrate-data') {
   process.exit(0);
 }
 
+if (cmd === 'distill') {
+  // ── 对话蒸馏：把对话摘要里的教训与 lessons.md 现有规则融合 ──────────────────
+  //
+  // 解决的问题：对话归档后（harness 压缩把原文从上下文删除），摘要里的教训没有
+  // 任何路径进入 lessons.md——下次会话学不到。本命令补上这座桥。
+  //
+  // 融合策略（结构性保证"不冲突"）：
+  //   - 只追加，绝不修改现有条目
+  //   - 标题归一化后精确匹配 → 比对正文相似度 → 相同=跳过（重复），不同=报告冲突（不合并）
+  //   - 无匹配 → 追加为新条目（编号 = 现有最大编号 + 1）
+  //
+  // 摘要文件格式（宽松解析）：
+  //   # 对话摘要：<主题>（<日期>）
+  //   ## 教训候选
+  //   ### <一句话结论>
+  //   - 现象：… / - 根因：… / - 规则：…   （字段名可变，见 normalizeField）
+
+  const digestArg = opt('--digest');
+  if (!digestArg) {
+    console.error('用法: node reflect.mjs distill --digest <file.md> [--dry-run] [--source <label>]');
+    console.error('\n摘要文件格式:');
+    console.error('  # 对话摘要：<主题>（<日期>）');
+    console.error('  ## 教训候选');
+    console.error('  ### <一句话结论>');
+    console.error('  - 现象：…');
+    console.error('  - 根因：…');
+    console.error('  - 规则：…');
+    process.exit(2);
+  }
+  const digestFile = path.resolve(digestArg);
+  if (!fs.existsSync(digestFile)) {
+    console.error(`摘要文件不存在: ${digestFile}`);
+    process.exit(2);
+  }
+
+  const dryRun = flag('--dry-run');
+  const source = opt('--source', path.basename(digestFile));
+
+  // ── 1. 解析摘要文件 → 候选教训 ──
+  const digestText = fs.readFileSync(digestFile, 'utf8').replace(/^\uFEFF/, '');
+  const FIELD_MAP = [
+    [/^(现象|症状)$/, '症状'],
+    [/^(误判|容易犯的误判|错误判断)$/, '容易犯的误判'],
+    [/^(根因|原因|实际机制|机制)$/, '实际机制'],
+    [/^(规则|教训|固化成的规则)$/, '规则'],
+  ];
+  function normalizeField(raw) {
+    const k = raw.trim().replace(/^\*\*|\*\*$/g, '').trim();
+    for (const [re, name] of FIELD_MAP) if (re.test(k)) return name;
+    return null;
+  }
+  function parseDigest(text) {
+    const out = [];
+    let cur = null;
+    for (const raw of text.split(/\r?\n/)) {
+      const line = raw.trimEnd();
+      const h3 = line.match(/^###\s+(.+)$/);
+      if (h3) {
+        if (cur && cur.title) out.push(cur);
+        cur = { title: h3[1].trim(), fields: {} };
+        continue;
+      }
+      // 跳过标题行与分隔线
+      if (/^#{1,2}\s|^---\s*$/.test(line.trim())) continue;
+      // 兼容两种字段写法："- **症状**：x" 与 "- 症状：x"（粗体可选）
+      const f = line.match(/^[-*]\s+(?:\*\*([^*]+)\*\*|([^*：:]{1,12}))\s*[:：]\s*(.*)$/);
+      if (f && cur) {
+        const rawName = (f[1] || f[2] || '').trim();
+        const name = normalizeField(rawName);
+        const val = f[3].trim();
+        if (name && val) cur.fields[name] = (cur.fields[name] ? cur.fields[name] + '\n  ' : '') + val;
+      }
+    }
+    if (cur && cur.title) out.push(cur);
+    return out;
+  }
+  const candidates = parseDigest(digestText);
+  if (candidates.length === 0) {
+    console.log('\n摘要里没有解析到任何教训候选。');
+    console.log('需要至少一个 "### <结论>" 小节，字段用 "- **现象**：…" 形式。');
+    process.exit(2);
+  }
+
+  // ── 2. 解析现有 lessons.md ──
+  const lessonsPath = path.join(HERE, '..', 'references', 'lessons.md');
+  const lessonsText = fs.readFileSync(lessonsPath, 'utf8').replace(/^\uFEFF/, '');
+  const existing = [];
+  {
+    let cur = null;
+    for (const raw of lessonsText.split(/\r?\n/)) {
+      const line = raw.trimEnd();
+      const h2 = line.match(/^##\s+(\d+)\.\s*(.+)$/);
+      if (h2) {
+        if (cur) existing.push(cur);
+        cur = { num: +h2[1], title: h2[2].trim(), lines: [] };
+        continue;
+      }
+      if (cur) cur.lines.push(line);
+    }
+    if (cur) existing.push(cur);
+  }
+  const maxNum = existing.reduce((m, e) => Math.max(m, e.num), 0);
+
+  // ── 3. 相似度：标题归一化 + 字符二元组 Jaccard ──
+  function normTitle(s) {
+    return s.toLowerCase().replace(/[\s"'""''（）()【】\[\]、，。：:;；!！?？—\-–]/g, '');
+  }
+  function bigrams(s) {
+    const set = new Set();
+    for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+    if (s.length === 1) set.add(s);
+    return set;
+  }
+  function jaccard(a, b) {
+    if (!a.size || !b.size) return 0;
+    let inter = 0;
+    for (const x of a) if (b.has(x)) inter++;
+    return inter / (a.size + b.size - inter);
+  }
+  function bodyOf(entry) {
+    if (entry.fields) return Object.values(entry.fields).join('\n');
+    // 现有条目：剥掉字段名前缀（- **症状**：/ - 症状：），只比内容。
+    // 不剥的话，字段名（约 6-10 字）会稀释二元组重合度，把真重复判成 0%。
+    const KNOWN = ['症状', '容易犯的误判', '实际机制', '规则', '现象', '根因', '教训', '原因', '机制', '误判', '固化成的规则'];
+    return entry.lines
+      .map((l) => {
+        let s = l.replace(/^[-*]\s+/, '');
+        for (const name of KNOWN) {
+          const re = new RegExp('^(?:\\*\\*)?' + name + '(?:\\*\\*)?\\s*[:：]');
+          if (re.test(s)) return s.replace(re, '').trim();
+        }
+        return s.trim();
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  function bodySim(a, b) {
+    return jaccard(bigrams(a.replace(/\s+/g, '')), bigrams(b.replace(/\s+/g, '')));
+  }
+
+  // ── 4. 逐候选融合 ──
+  console.log('\n================ 对话蒸馏（distill）================\n');
+  console.log(`摘要: ${digestFile}`);
+  console.log(`候选: ${candidates.length} 条   现有规则: ${existing.length} 条`);
+  console.log(`模式: ${dryRun ? '预览（--dry-run）' : '写入'}\n`);
+
+  const added = [];
+  const skippedDup = [];
+  const conflicts = [];
+  let nextNum = maxNum;
+
+  for (const c of candidates) {
+    const nt = normTitle(c.title);
+    const ntGrams = bigrams(nt);
+    const cBody = bodyOf(c);
+
+    let best = null;
+    for (const e of existing) {
+      const sim = jaccard(ntGrams, bigrams(normTitle(e.title)));
+      if (!best || sim > best.sim) best = { sim, entry: e };
+    }
+
+    if (best && best.sim >= 0.5) {
+      const bs = bodySim(cBody, bodyOf(best.entry));
+      if (bs >= 0.4) {
+        skippedDup.push({ title: c.title, like: best.entry.num, sim: best.sim, bodySim: bs });
+        console.log(`  ⏭  跳过（重复）: "${c.title.slice(0, 46)}"`);
+        console.log(`      ↳ 与现有第 ${best.entry.num} 条相似（标题 ${(best.sim * 100) | 0}% / 正文 ${(bs * 100) | 0}%）`);
+        continue;
+      }
+      conflicts.push({ title: c.title, like: best.entry.num, sim: best.sim, bodySim: bs });
+      console.log(`  ⚠️  冲突（不自动合并）: "${c.title.slice(0, 46)}"`);
+      console.log(`      ↳ 标题与现有第 ${best.entry.num} 条相似 ${(best.sim * 100) | 0}%，但正文只有 ${(bs * 100) | 0}%`);
+      console.log('      ↳ 需要人判断：是同一教训的新补充，还是两条不同的教训。');
+      continue;
+    }
+
+    nextNum++;
+    added.push({ num: nextNum, title: c.title, fields: c.fields });
+    console.log(`  ➕ 新增 #${nextNum}: "${c.title.slice(0, 46)}"`);
+    for (const [k, v] of Object.entries(c.fields)) {
+      console.log(`      ${k}: ${v.split('\n')[0].slice(0, 60)}${v.includes('\n') ? '…' : ''}`);
+    }
+  }
+
+  if (skippedDup.length) console.log(`\n跳过 ${skippedDup.length} 条重复。`);
+  if (conflicts.length) console.log(`冲突 ${conflicts.length} 条（已保留在下面，需人工处理）。`);
+
+  // ── 5. 写入 ──
+  if (added.length === 0) {
+    console.log('\n没有新增条目，lessons.md 未改动。');
+    if (conflicts.length) {
+      console.log('\n冲突清单（人工确认后可手动并入 lessons.md）:');
+      for (const c of conflicts) console.log(`  - "${c.title}"  （与 #${c.like} 相似）`);
+    }
+    process.exit(0);
+  }
+  if (dryRun) {
+    console.log(`\n预览结束：将新增 ${added.length} 条。去掉 --dry-run 执行写入。`);
+    process.exit(0);
+  }
+
+  const block = added.map((a) => {
+    const lines = [`## ${a.num}. ${a.title}`, ''];
+    const order = ['症状', '容易犯的误判', '实际机制', '规则'];
+    const used = new Set();
+    for (const k of order) {
+      if (a.fields[k] === undefined) continue;
+      for (const v of a.fields[k].split('\n')) lines.push(`- **${k}**：${v}`);
+      used.add(k);
+    }
+    for (const [k, v] of Object.entries(a.fields)) {
+      if (used.has(k)) continue;
+      for (const vv of v.split('\n')) lines.push(`- **${k}**：${vv}`);
+    }
+    return lines.join('\n');
+  }).join('\n---\n\n');
+
+  const sep = lessonsText.endsWith('\n') ? '\n---\n\n' : '\n\n---\n\n';
+  fs.writeFileSync(lessonsPath, lessonsText + sep + block + '\n', 'utf8');
+  console.log(`\n已写入: ${lessonsPath}`);
+  console.log(`新增 ${added.length} 条（现有规则 ${existing.length} 条未改动，仅追加）。`);
+
+  if (conflicts.length) {
+    console.log('\n冲突清单（未合并，需人工确认）:');
+    for (const c of conflicts) console.log(`  - "${c.title}"  （与 #${c.like} 相似，正文 ${(c.bodySim * 100) | 0}%）`);
+  }
+
+  // ── 6. 归档摘要到共享位置（跨窗口可查） ──
+  const digestDir = path.join(DATA, 'digests');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const safe = String(source).replace(/[^\w\u4e00-\u9fa5.-]+/g, '_').slice(0, 60);
+  const archivedTo = path.join(digestDir, `${stamp}-${safe}.md`);
+  fs.mkdirSync(digestDir, { recursive: true });
+  fs.copyFileSync(digestFile, archivedTo);
+  console.log(`摘要已归档: ${archivedTo}`);
+  console.log('（对话原文的删除由 harness 压缩负责；本命令负责把教训留进 lessons.md）');
+  process.exit(0);
+}
+
 console.error(`未知子命令: ${cmd}`);
-console.error('可用: snapshot | diff | journal | record | incidents | confirm | promote | status | migrate-data');
+console.error('可用: snapshot | diff | journal | record | incidents | confirm | promote | status | migrate-data | distill');
 process.exit(2);
