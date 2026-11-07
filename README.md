@@ -83,6 +83,37 @@ node scripts/reflect.mjs confirm <fp> --note "原因"  # 人工确认真问题
 node scripts/reflect.mjs promote     # 生成 lessons 草稿
 ```
 
+### 三、对话蒸馏（`distill`）：把对话摘要里的教训并进规则库
+
+对话被上下文压缩归档后，摘要里的教训没有任何路径进入 `lessons.md`——下次会话学不到。
+`distill` 补上这座桥：**解析摘要 → 与现有规则做相似度比对 → 只追加、绝不修改现有条目**。
+
+```bash
+node scripts/reflect.mjs distill --digest <摘要.md> --dry-run   # 先预览
+node scripts/reflect.mjs distill --digest <摘要.md>             # 确认后写入
+```
+
+摘要文件格式（宽松解析：字段名可写 现象/症状、根因/原因/机制、规则/教训，`**` 加不加都行）：
+
+```markdown
+# 对话摘要：<主题>（<日期>）
+## 教训候选
+### <一句话结论>
+- 现象：…
+- 根因：…
+- 规则：…
+```
+
+融合规则（结构性保证"不冲突"）：
+
+| 情形 | 处理 |
+|---|---|
+| 标题相似（二元组 Jaccard ≥ 0.5）且正文相似（≥ 0.4） | 跳过（重复） |
+| 标题相似但正文不同 | **报冲突，不自动合并**——由人判断是新补充还是两条教训 |
+| 无匹配 | 追加为新条目（编号 = 现有最大编号 + 1） |
+
+写入后摘要归档到 `<数据目录>/digests/`（共享位置，跨窗口可查）。
+
 ---
 
 ## 快速开始
@@ -179,7 +210,7 @@ dsh-error-self-reflection/
 │   └── lessons.md            # 15 条故障模式与规则（已脱敏）
 ├── scripts/
 │   ├── check.mjs             # 静态结构检查
-│   └── reflect.mjs           # 快照 / diff / 归档 / 复发 / 沉淀
+│   └── reflect.mjs           # 快照 / diff / 归档 / 复发 / 沉淀 / distill
 ├── examples/
 │   ├── run.mjs               # 一键回归测试
 │   ├── good/                 # 正确写法（应全绿）
@@ -208,6 +239,15 @@ node scripts/reflect.mjs migrate-data --yes  # 执行（复制，不删旧数据
 ```
 
 迁移只**复制**，目标已存在同名文件时**跳过不覆盖**，避免覆盖共享位置里更新的数据。
+
+该目录下的产物：
+
+```
+snapshots/<tag>.json               快照（带 schema 版本）
+journal.jsonl                      变更账本
+incidents.jsonl                    事故归档 + 确认标记
+digests/<时间戳>-<来源>.md          distill 归档的对话摘要
+```
 
 ---
 
